@@ -15,64 +15,13 @@ class {{ type_name }}(enum.Enum):
 {% else %}
 
 class {{ type_name }}:
+    {% for variant in e.variants() -%}
+    {{variant.name()}}: type[_{{type_name}}_{{variant.name()}}]
+    {% endfor %}
+
     {%- call py::docstring(e, 4) %}
     def __init__(self):
         raise RuntimeError("{{ type_name }} cannot be instantiated directly")
-
-    # Each enum variant is a nested class of the enum itself.
-    {% for variant in e.variants() -%}
-    class {{ variant.name() }}:
-        {%- call py::docstring(variant, 8) %}
-
-    {%-  if variant.has_nameless_fields() %}
-        def __init__(self, *values):
-            if len(values) != {{ variant.fields().len() }}:
-                raise TypeError(f"Expected {{ variant.fields().len() }} arguments, found {len(values)}")
-        {%- for field in variant.fields() %}
-            if not isinstance(values[{{ loop.index0 }}], {{ field|type_name }}):
-                raise TypeError(f"unexpected type for tuple element {{ loop.index0 }} - expected '{{ field|type_name }}', got '{type(values[{{ loop.index0 }}])}'")
-        {%- endfor %}
-            self._values = values
-
-        def __getitem__(self, index):
-            return self._values[index]
-
-        def __str__(self):
-            return f"{{ type_name }}.{{ variant.name() }}{self._values!r}"
-
-        def __eq__(self, other):
-            if not other.is_{{ variant.name()|var_name }}():
-                return False
-            return self._values == other._values
-
-    {%-  else -%}
-        {%- for field in variant.fields() %}
-        {{ field.name() }}: "{{ field|type_name }}"
-        {%- call py::docstring(field, 8) %}
-        {%- endfor %}
-
-        def __init__(self,{% for field in variant.fields() %}{{ field.name() }}: "{{- field|type_name }}"{% if loop.last %}{% else %}, {% endif %}{% endfor %}):
-            {%- if variant.has_fields() %}
-            {%- for field in variant.fields() %}
-            self.{{ field.name() }} = {{ field.name() }}
-            {%- endfor %}
-            {%- else %}
-            pass
-            {%- endif %}
-
-        def __str__(self):
-            return "{{ type_name }}.{{ variant.name() }}({% for field in variant.fields() %}{{ field.name() }}={}{% if loop.last %}{% else %}, {% endif %}{% endfor %})".format({% for field in variant.fields() %}self.{{ field.name() }}{% if loop.last %}{% else %}, {% endif %}{% endfor %})
-
-        def __eq__(self, other):
-            if not other.is_{{ variant.name()|var_name }}():
-                return False
-            {%- for field in variant.fields() %}
-            if self.{{ field.name() }} != other.{{ field.name() }}:
-                return False
-            {%- endfor %}
-            return True
-    {%  endif %}
-    {% endfor %}
 
     # For each variant, we have an `is_NAME` method for easily checking
     # whether an instance is that variant.
@@ -81,11 +30,63 @@ class {{ type_name }}:
         return isinstance(self, {{ type_name }}.{{ variant.name() }})
     {% endfor %}
 
-# Now, a little trick - we make each nested variant class be a subclass of the main
-# enum class, so that method calls and instance checks etc will work intuitively.
-# We might be able to do this a little more neatly with a metaclass, but this'll do.
 {% for variant in e.variants() -%}
-{{ type_name }}.{{ variant.name() }} = type("{{ type_name }}.{{ variant.name() }}", ({{ type_name }}.{{variant.name()}}, {{ type_name }},), {})  # type: ignore
+class _{{type_name}}_{{ variant.name() }}({{ type_name }}):
+    {%- call py::docstring(variant, 4) %}
+
+    {%-  if variant.has_nameless_fields() %}
+    def __init__(self, *values):
+        if len(values) != {{ variant.fields().len() }}:
+            raise TypeError(f"Expected {{ variant.fields().len() }} arguments, found {len(values)}")
+        {%- for field in variant.fields() %}
+        if not isinstance(values[{{ loop.index0 }}], {{ field|type_name }}):
+            raise TypeError(f"unexpected type for tuple element {{ loop.index0 }} - expected '{{ field|type_name }}', got '{type(values[{{ loop.index0 }}])}'")
+        {%- endfor %}
+        self._values = values
+
+    def __getitem__(self, index):
+        return self._values[index]
+
+    def __str__(self):
+        return f"{{ type_name }}.{{ variant.name() }}{self._values!r}"
+
+    def __eq__(self, other):
+        # We use strict inheritance check now
+        if not isinstance(other, _{{type_name}}_{{ variant.name() }}):
+            return False
+        return self._values == other._values
+
+    {%-  else -%}
+    {%- for field in variant.fields() %}
+    {{ field.name() }}: "{{ field|type_name }}"
+    {%- call py::docstring(field, 4) %}
+    {%- endfor %}
+
+    def __init__(self,{% for field in variant.fields() %}{{ field.name() }}: "{{- field|type_name }}"{% if loop.last %}{% else %}, {% endif %}{% endfor %}):
+        {%- if variant.has_fields() %}
+        {%- for field in variant.fields() %}
+        self.{{ field.name() }} = {{ field.name() }}
+        {%- endfor %}
+        {%- else %}
+        pass
+        {%- endif %}
+
+    def __str__(self):
+        return "{{ type_name }}.{{ variant.name() }}({% for field in variant.fields() %}{{ field.name() }}={}{% if loop.last %}{% else %}, {% endif %}{% endfor %})".format({% for field in variant.fields() %}self.{{ field.name() }}{% if loop.last %}{% else %}, {% endif %}{% endfor %})
+
+    def __eq__(self, other):
+        if not isinstance(other, _{{type_name}}_{{ variant.name() }}):
+            return False
+        {%- for field in variant.fields() %}
+        if self.{{ field.name() }} != other.{{ field.name() }}:
+            return False
+        {%- endfor %}
+        return True
+    {% endif %}
+{% endfor %}
+
+{% for variant in e.variants() -%}
+{{ type_name }}.{{ variant.name() }} = _{{type_name}}_{{ variant.name() }}
 {% endfor %}
 
 {% endif %}
@@ -150,4 +151,3 @@ class {{ ffi_converter_name }}(_UniffiConverterRustBuffer):
             {%- endfor %}
         {%- endif %}
         {%- endfor %}
-
