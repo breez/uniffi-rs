@@ -6,6 +6,10 @@
 
 ## [[UnreleasedUniFFIVersion]] (backend crates: [[UnreleasedBackendVersion]]) - (_[[ReleaseDate]]_)
 
+### What's New?
+
+- `#[uniffi::export(async_runtime = "tokio")]` can now be applied to trait exports, wrapping each method's FFI scaffolding future in `async_compat::Compat` the same way it does for inherent impls and free functions ([#2899](https://github.com/mozilla/uniffi-rs/pull/2899)).
+
 [All changes in [[UnreleasedUniFFIVersion]]](https://github.com/mozilla/uniffi-rs/compare/v0.29.5...HEAD).
 
 ## v0.29.5 (backend crates: v0.29.5) - (_2025-11-14_)
